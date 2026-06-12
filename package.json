@@ -1,0 +1,16 @@
+{
+    "name": "max-widget-backend",
+    "version": "1.0.0",
+    "private": true,
+    "description": "Бэкенд для публичного виджета Max Messenger: учёт установок (создание сделки в AmoCRM вендора)",
+    "type": "commonjs",
+    "engines": {
+        "node": ">=18"
+    },
+    "scripts": {
+        "start": "node server.js"
+    },
+    "dependencies": {
+        "express": "^4.19.2"
+    }
+}
