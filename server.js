@@ -117,6 +117,31 @@ async function getVendorAccessToken() {
     return saved.access_token;
 }
 
+// ===== Кастомные поля сделки: находим id по имени (с кэшем) =====
+let _leadFieldsCache = null;
+async function getLeadFieldsMap(token, base) {
+    if (_leadFieldsCache) return _leadFieldsCache;
+    const map = {};
+    try {
+        const r = await fetch(`${base}/api/v4/leads/custom_fields?limit=250`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const data = await r.json().catch(() => ({}));
+        const fields = (data._embedded && data._embedded.custom_fields) || [];
+        fields.forEach(function (f) {
+            if (f && f.name) map[String(f.name).trim().toLowerCase()] = f.id;
+        });
+    } catch (e) { /* поля не найдены — не критично */ }
+    _leadFieldsCache = map;
+    return map;
+}
+function pickFieldId(map, names) {
+    for (var i = 0; i < names.length; i++) {
+        if (map[names[i].toLowerCase()]) return map[names[i].toLowerCase()];
+    }
+    return null;
+}
+
 // ===== Создание сделки в ВАШЕМ AmoCRM =====
 async function createVendorLead(info) {
     const token = await getVendorAccessToken();
@@ -135,10 +160,23 @@ async function createVendorLead(info) {
         }];
     }
 
-    const body = [{
-        name: title,
-        _embedded: { contacts: [contact] }
-    }];
+    // Кастомные поля СДЕЛКИ: account_id и subdomain (если такие поля созданы в AmoCRM).
+    // Бэкенд сам находит их по имени — создайте текстовые поля сделки
+    // с именами "account_id" и "subdomain".
+    const fieldsMap = await getLeadFieldsMap(token, base);
+    const leadCF = [];
+    const accIdFieldId = pickFieldId(fieldsMap, ['account_id', 'account id', 'id аккаунта']);
+    if (accIdFieldId && info.account_id != null) {
+        leadCF.push({ field_id: accIdFieldId, values: [{ value: String(info.account_id) }] });
+    }
+    const subFieldId = pickFieldId(fieldsMap, ['subdomain', 'поддомен']);
+    if (subFieldId && info.subdomain) {
+        leadCF.push({ field_id: subFieldId, values: [{ value: String(info.subdomain) }] });
+    }
+
+    const lead = { name: title, _embedded: { contacts: [contact] } };
+    if (leadCF.length) lead.custom_fields_values = leadCF;
+    const body = [lead];
 
     const resp = await fetch(`${base}/api/v4/leads/complex`, {
         method: 'POST',
